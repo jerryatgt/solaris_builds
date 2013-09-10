@@ -1,0 +1,142 @@
+#!/bin/bash
+
+URL="http://web.mit.edu/kerberos/dist/krb5/1.11/krb5-1.11.3-signed.tar"
+TARBALL=$(basename $URL)
+SRCNAME=$(echo $TARBALL|sed -e 's/.tar.gz//')
+SRCDIR=work/src/$SRCNAME
+TOPDIR=$PWD
+PREFIX=/usr/local/gt-oit/$SRCNAME
+EXPORTS="sbin/sshd bin/ssh"
+
+# for pkginfo file
+PKG="GT$(echo $SRCNAME|sed -e 's/-.*//')"
+VERSION=$(echo $SRCNAME|sed -e 's/^[^-]*-//')
+ARCH=$(uname -p)
+NAME="$PKG $VERSION $ARCH $(uname -s)"
+CATEGORY=application
+VENDOR=GT-OIT
+EMAIL=Jerry.Swann@oit.gatech.edu
+PSTAMP=$(/usr/bin/perl -e '@T=stat($ARGV[0]); print scalar localtime $T[9];' $0)
+BASEDIR=/
+CLASSES=none
+ISTATES="S s 1 2 3"
+RSTATES="S s 1 2 3"
+
+BUILDDIR=work/out/$SRCNAME
+
+build_the_software () {
+	if test ! -f $TOPDIR/$BUILDDIR/$PREFIX/bin/ssh; then
+		export PATH=$PATH:/usr/sfw/bin:/usr/ccs/bin
+		mkdir -p $TOPDIR/$BUILDDIR
+		cd $TOPDIR/$SRCDIR
+		./configure --prefix=$PREFIX --sysconfdir=/etc/ssh
+		make
+		make DESTDIR=$TOPDIR/$BUILDDIR install
+	fi
+}
+
+# while you can tweak below here, you don't really have to
+
+create_sym_links () {
+	(
+		cd $TOPDIR/$BUILDDIR$PREFIX/../..
+		for each in $EXPORTS; do
+			dir=$(dirname $each)
+			if test ! -z "$dir" -a ! -d "$dir"; then
+				mkdir -p $dir
+			fi
+			echo ln -s ../gt-oit/$each $each
+			ln -s ../gt-oit/$SRCNAME/$each $each
+		done
+	)
+}
+
+remove_shared_files () {
+	n=$(find $BUILDDIR$PREFIX -print 2>/dev/null| grep '\.so$')
+	for each in $n; do
+		echo "removing $each"
+		rm -f $each
+	done
+}
+
+retrieve_tarball () {
+	if test ! -f "$TOPDIR/tarballs/$TARBALL"; then
+		cd $TOPDIR/tarballs
+		/usr/sfw/bin/wget $URL
+	else
+		echo "$SRCNAME already downloaded..."
+	fi
+}
+
+untar_tarball () {
+	if test ! -d $TOPDIR/$SRCDIR; then
+		cd $TOPDIR/work/src
+		/usr/sfw/bin/gtar -xzvf $TOPDIR/tarballs/$TARBALL
+	else
+		echo "$SRCNAME already untarred..."
+	fi
+}
+
+main () {
+	retrieve_tarball
+	untar_tarball
+	build_the_software
+#	remove_shared_files
+#	create_sym_links
+}
+
+write_pkginfo () {
+	f=pkginfo
+	echo PKG=$PKG >$f
+	echo NAME=$NAME >>$f
+	echo ARCH=$ARCH >>$f
+	echo VERSION=$VERSION >>$f
+	echo CATEGORY=$CATEGORY >>$f
+	echo VENDOR=$VENDOR >>$f
+	echo EMAIL=$EMAIL >>$f
+	echo PSTAMP=$PSTAMP >>$f
+	echo BASEDIR=$BASEDIR >>$f
+	echo CLASSES=$CLASSES >>$f
+	echo ISTATES=$ISTATES >>$f
+	echo RSTATES=$RSTATES >>$f
+}
+
+make_package () {
+	(
+		cd $TOPDIR/$BUILDDIR
+		write_pkginfo
+		echo "i ./pkginfo" >prototype
+		find . -print |/usr/bin/pkgproto|sed -e "s/$USER [a-z][a-z]*$/bin bin/"|egrep -v "prototype|pkginfo" >>prototype
+		pkgmk -r `pwd`
+		cd /var/spool/pkg
+		pkgtrans -s `pwd` $TOPDIR/pkgs/$PKG-$VERSION-$ARCH.pkg
+		/bin/rm -rf /var/spool/pkg/$PKG
+	)
+}
+
+distclean () {
+	/bin/rm -rf $TOPDIR/$SRCDIR $TOPDIR/$BUILDDIR
+}
+
+case "$1" in
+package*)
+	shift
+	make_package "$@"
+	;;
+distclean*)
+	shift
+	distclean "$@"
+	;;
+build*)
+	shift
+	build_the_software "$@"
+	;;
+force*)
+	FORCE=1
+	shift
+	main "$@"
+	;;
+*)
+	main "$@"
+	;;
+esac

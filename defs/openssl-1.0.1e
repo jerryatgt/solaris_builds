@@ -1,0 +1,14 @@
+#####
+#
+#	openssl-1.0.1e
+#
+#####
+
+URL="http://www.openssl.org/source/openssl-1.0.1e.tar.gz"
+TARBALL=$(basename $URL)
+PROGRAM=openssl
+VERSION=1.0.1e
+EXPORTS="bin/openssl"
+
+# for pkginfo file
+
